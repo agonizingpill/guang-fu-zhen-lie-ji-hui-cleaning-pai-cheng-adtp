@@ -27,3 +27,13 @@ class SettlementInput(Inputs):
     price_per_kw:float=Field(gt=0,le=100000)
     cost_per_liter:float=Field(ge=0,le=10000)
     negative_reason:str=Field(default='',max_length=400)
+class ReviewInput(Inputs):
+    mission_id:int
+    post_temp:float=Field(ge=-20,le=85)
+class ResolveInput(Inputs):
+    rationale:str=Field(min_length=5,max_length=400)
+    @field_validator('rationale')
+    @classmethod
+    def reason(cls,v):
+        if len(v.strip())<5:raise ValueError('裁定依据至少5字')
+        return v.strip()

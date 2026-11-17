@@ -37,16 +37,27 @@ def dispatch(db,key,user):
     mission.status='dispatched';mission.dispatched_at=datetime.utcnow();survey.state='scheduled'
     audit(db,user,f'清洗任务 {key} 派工，扣减{mission.water_liters}L，余{block.water_liters}L');db.commit();return mission
 
-def retest(db,key,body,user):
+def retest(db,key,body,user,queue):
     mission=require(db,WashMission,key,True)
-    if mission.status not in ['dispatched','retested']:raise HTTPException(409,'须先派工，已验收任务不可更改复测')
+    if mission.status not in ['dispatched','retested','accepted']:raise HTTPException(409,'须先派工，旧计划不可复测')
     survey=require(db,SoilingSurvey,mission.survey_id,True)
+    # 锁序与结算一致：任务→复核→结算，避免修订与签结并发时相互等待。
+    from .operations_models import WashSettlement,RevenueReview
+    from . import review_service
+    db.scalar(select(RevenueReview).where(RevenueReview.mission_id==mission.id).with_for_update())
+    if mission.status=='accepted':
+        # 未签结任务允许修订复测；已签结金额和依据保持不变。
+        s=db.scalar(select(WashSettlement).where(WashSettlement.mission_id==mission.id).with_for_update())
+        if s and s.state=='signed':raise HTTPException(409,'合同已签结，复测读数与收益依据保持不变')
     if body.post_kw>survey.capacity_kw*1.2:raise HTTPException(409,'复测功率超出额定容量120%，请核对读数')
     mission.post_kw=body.post_kw;mission.post_irradiance=body.post_irradiance
     mission.normalized_kw=body.post_kw*survey.irradiance/body.post_irradiance
     mission.verified_gain=mission.normalized_kw-survey.observed_kw
-    mission.status='retested';survey.state='retested'
-    audit(db,user,f'清洗任务 {key} 复测，归一化收益{mission.verified_gain:.3f}kW');db.commit();return mission
+    if mission.status!='accepted':mission.status='retested';survey.state='retested'
+    # 修订一经受理即冻结结算：复核回到待核定，草稿结算凭版本差冻结，重新核定后更新草稿金额。
+    review=review_service.register_retest(db,mission,survey,body.post_temp)
+    audit(db,user,f'清洗任务 {key} 复测（温度{body.post_temp}°C），归一化收益{mission.verified_gain:.3f}kW，收益复核重新核定');db.commit()
+    review_service.enqueue(queue,review);return mission
 
 def accept(db,key,user):
     mission=require(db,WashMission,key,True)

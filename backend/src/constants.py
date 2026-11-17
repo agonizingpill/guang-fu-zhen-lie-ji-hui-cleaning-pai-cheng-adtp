@@ -18,3 +18,7 @@ class MissionState(StrEnum):
     RETESTED='retested'
     ACCEPTED='accepted'
     SUPERSEDED='superseded'
+class ReviewState(StrEnum):
+    PENDING='pending'
+    MANUAL='manual'
+    SETTLEABLE='settleable'

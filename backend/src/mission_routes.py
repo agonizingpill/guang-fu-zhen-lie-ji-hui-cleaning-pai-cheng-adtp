@@ -1,3 +1,5 @@
+import os
+import redis
 from fastapi import APIRouter,Depends
 from sqlalchemy import select
 from .database import session
@@ -5,6 +7,7 @@ from .auth import current,editor,admin
 from .models import WashMission
 from .schemas import MissionInput,WaterRevision,RetestInput
 from . import wash_service
+queue=redis.Redis.from_url(os.getenv('REDIS_URL','redis://redis:6379/0'),decode_responses=True)
 router=APIRouter(prefix='/missions')
 @router.get('')
 def missions(user=Depends(current),db=Depends(session)):return db.scalars(select(WashMission).order_by(WashMission.id.desc())).all()
@@ -15,6 +18,6 @@ def revise(key:int,body:WaterRevision,user=Depends(editor),db=Depends(session)):
 @router.post('/{key}/dispatch')
 def dispatch(key:int,user=Depends(admin),db=Depends(session)):return wash_service.dispatch(db,key,user)
 @router.post('/{key}/retest')
-def retest(key:int,body:RetestInput,user=Depends(editor),db=Depends(session)):return wash_service.retest(db,key,body,user)
+def retest(key:int,body:RetestInput,user=Depends(editor),db=Depends(session)):return wash_service.retest(db,key,body,user,queue)
 @router.post('/{key}/accept')
 def accept(key:int,user=Depends(admin),db=Depends(session)):return wash_service.accept(db,key,user)

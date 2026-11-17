@@ -6,6 +6,9 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 FEATURES=['capacity_kw','irradiance','module_temp','slope']
+# 标定适用范围：超出任一维度即拒评/转人工复核，不外推模型。
+CALIBRATION={'capacity_kw':(80,150),'irradiance':(350,1050),'module_temp':(18,65),'slope':(10,35)}
+LABELS={'capacity_kw':'装机kW','irradiance':'辐照W/m²','module_temp':'组件温度°C','slope':'坡度°'}
 @lru_cache(maxsize=1)
 def train_reference():
     source=Path(__file__).resolve().parents[1]/'fixtures/clean_reference.json'
@@ -23,3 +26,12 @@ def estimate(survey):
     clean=max(0,float(model.predict([[getattr(survey,k) for k in FEATURES]])[0]))
     loss=max(0,clean-survey.observed_kw)
     return clean,loss,evidence
+
+def calibration_gaps(conditions,tag):
+    # conditions: dict with FEATURES keys; returns human-readable out-of-range items.
+    return [f'{tag}{LABELS[k]}{conditions[k]}不在{lo}–{hi}标定范围' for k,(lo,hi) in CALIBRATION.items() if not lo<=conditions[k]<=hi]
+
+def predict_clean(conditions):
+    # 同一清洁功率模型在任意给定条件下的预测，用于把前后读数换算到同一条件。
+    model,evidence=train_reference()
+    return max(0,float(model.predict([[conditions[k] for k in FEATURES]])[0])),evidence

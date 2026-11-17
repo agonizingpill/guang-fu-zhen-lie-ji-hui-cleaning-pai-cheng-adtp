@@ -26,3 +26,4 @@ class WaterRevision(BaseModel):
 class RetestInput(BaseModel):
     post_kw:float=Field(gt=0,le=10000)
     post_irradiance:float=Field(ge=350,le=1400)
+    post_temp:float=Field(ge=-20,le=85)

@@ -4,7 +4,7 @@ from src.database import Base,engine,Session
 from src.models import User,ArrayBlock,SoilingSurvey,WashMission
 from src.revisit_models import WaterDelivery,FollowupSurvey
 from src.auth import hash_password
-from src.operations_models import WashCrew
+from src.operations_models import WashCrew,RevenueReview
 
 def seed():
     Base.metadata.create_all(engine)
@@ -35,5 +35,8 @@ def seed():
             db.add(mission);db.flush()
         if not db.scalar(select(FollowupSurvey).where(FollowupSurvey.mission_id==mission.id,FollowupSurvey.days_after==2)):
             db.add(FollowupSurvey(mission_id=mission.id,days_after=2,irradiance=800,observed_kw=61,normalized_kw=61,normalized_loss=100/62,state='stable',baseline_snapshot={'post_kw':62,'post_irradiance':800,'accepted_at':mission.accepted_at.isoformat(),'block_id':block.id,'block_code':block.code,'survey_id':historical.id,'survey_code':historical.code,'threshold_pct':5}))
+        # 历史已验收任务的收益复核：待核定状态由worker启动恢复机制拾取计算，不重复插入。
+        if not db.scalar(select(RevenueReview).where(RevenueReview.mission_id==mission.id)):
+            db.add(RevenueReview(mission_id=mission.id,state='pending',post_temp=35,pre_snapshot={'survey_code':historical.code,'capacity_kw':historical.capacity_kw,'slope':historical.slope,'irradiance':historical.irradiance,'module_temp':historical.module_temp,'observed_kw':historical.observed_kw},post_snapshot={'post_kw':62,'post_irradiance':800,'post_temp':35},reading_version=1,version=1))
         db.commit();print({key:db.scalar(select(func.count()).select_from(model)) for key,model in [('users',User),('blocks',ArrayBlock),('surveys',SoilingSurvey)]})
 if __name__=='__main__':seed()
